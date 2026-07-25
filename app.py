@@ -116,6 +116,14 @@ FUENTES = [
     {"nombre": "Plan B Misiones", "url": "https://news.google.com/rss/search?q=site:planbmisiones.com&hl=es-419&gl=AR&ceid=AR:es-419"}
 ]
 
+CATEGORIAS_A_EXCLUIR = {
+    'inicio', 'video', 'videos', 'provinciales', 'política', 'politica', 
+    'sociedad', 'deportes', 'policiales', 'contacto', 'editorial', 'noticias', 
+    'portada', 'mundo', 'internacionales', 'locales', 'opinion', 'opinión',
+    'plan b misiones', 'revista códigos', 'misiones online', 'primera edición', 
+    'canal 12 misiones', 'el territorio', 'noticias de la calle', 'la misión digital'
+}
+
 ARCH_HISTORIAL = "historial_tendencias.json"
 
 def cargar_historial():
@@ -146,15 +154,23 @@ def ejecutar_medicion_real(key):
     for f in FUENTES:
         try:
             feed = feedparser.parse(f["url"])
-            for entry in feed.entries[:8]:
+            count_medio = 0
+            for entry in feed.entries:
                 if hasattr(entry, 'title') and entry.title:
+                    # Limpieza de firmas de marca
                     titulo_limpio = re.sub(r'\s*[\-\|]\s*.*$', '', entry.title).strip()
-                    if titulo_limpio:
+                    tit_lower = titulo_limpio.lower()
+                    
+                    # FILTRADO DE MENÚS (Longitud mínima de 18 caracteres y exclusión de categorías)
+                    if len(titulo_limpio) >= 18 and tit_lower not in CATEGORIAS_A_EXCLUIR:
                         titulares_log.append({
                             "Fecha/Hora": hora_chequeo,
                             "Medio": f["nombre"],
                             "Titular Real": titulo_limpio
                         })
+                        count_medio += 1
+                        if count_medio >= 8:
+                            break # Máximo 8 noticias reales por medio
         except:
             pass
             
@@ -257,7 +273,7 @@ if api_key:
 
             html_mosaico = '<div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">'
 
-            # FILA 1 (Top 2 Elementos)
+            # FILA 1
             html_mosaico += '<div style="display: flex; gap: 12px; width: 100%;">'
             for i, (palabra, cant_actual) in enumerate(row1_items):
                 p_key = palabra.lower()
@@ -266,7 +282,7 @@ if api_key:
 
                 pct_participacion = int(round((cant_actual / sum_menciones) * 100))
                 w_pct = (cant_actual / row1_sum) * 100
-                var_texto = f"{pct_participacion}%" # PORCENTAJE LIMPIO SIN SIGNOS + O -
+                var_texto = f"{pct_participacion}%"
 
                 if diferencia > 0 or i < 2:
                     clase_color = "card-yellow-dark"
@@ -283,7 +299,7 @@ if api_key:
                 html_mosaico += card_html
             html_mosaico += '</div>'
 
-            # FILA 2 (Top 3 a 5 Elementos)
+            # FILA 2
             html_mosaico += '<div style="display: flex; gap: 12px; width: 100%;">'
             for i, (palabra, cant_actual) in enumerate(row2_items):
                 idx = i + 2
@@ -293,7 +309,7 @@ if api_key:
 
                 pct_participacion = int(round((cant_actual / sum_menciones) * 100))
                 w_pct = (cant_actual / row2_sum) * 100
-                var_texto = f"{pct_participacion}%" # PORCENTAJE LIMPIO SIN SIGNOS + O -
+                var_texto = f"{pct_participacion}%"
 
                 if diferencia > 0:
                     clase_color = "card-yellow-dark"
