@@ -10,7 +10,7 @@ from google import genai
 # Configuración de página minimalista
 st.set_page_config(page_title="trends misiones", page_icon="📈", layout="centered")
 
-# Estilo visual Plus Jakarta Sans + Mosaico Balanceado en Tonos de Amarillo
+# Estilo visual Plus Jakarta Sans + Mosaico Balanceado
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
@@ -32,14 +32,6 @@ st.markdown("""
         text-transform: lowercase;
         margin-top: 5px;
         margin-bottom: 20px;
-    }
-    
-    .mosaic-container {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        width: 100%;
-        margin-top: 10px;
     }
     
     .mosaic-card {
@@ -105,6 +97,7 @@ st.markdown('<div class="trends-header">trends misiones</div>', unsafe_allow_htm
 
 api_key = st.secrets.get("GEMINI_API_KEY") if "GEMINI_API_KEY" in st.secrets else st.sidebar.text_input("🔑 Gemini API Key", type="password")
 
+# 15 MEDIOS PERIODÍSTICOS OFICIALES DE MISIONES
 FUENTES = [
     {"nombre": "Misiones Online", "url": "https://misionesonline.net/feed/"},
     {"nombre": "Primera Edición", "url": "https://www.primeraedicion.com.ar/feed/"},
@@ -155,7 +148,6 @@ def ejecutar_medicion_real(key):
             feed = feedparser.parse(f["url"])
             for entry in feed.entries[:8]:
                 if hasattr(entry, 'title') and entry.title:
-                    # LIMPIEZA DE MARCAS DE AGUA DE DIARIOS (ej: " - Revista Códigos")
                     titulo_limpio = re.sub(r'\s*[\-\|]\s*.*$', '', entry.title).strip()
                     if titulo_limpio:
                         titulares_log.append({
@@ -178,8 +170,8 @@ def ejecutar_medicion_real(key):
 
     Extrae exactamente las 5 PALABRAS O CONCEPTOS TEMÁTICOS MÁS MENCIONADOS Y RECURRENTES en la coyuntura informativa actual de la provincia.
     
-    REGLAS DE FILTRADO EXTREMO (SÚPER IMPORTANTE):
-    1. PROHIBIDO TOTALMENTE NOMBRES DE MEDIOS Y MARCAS: No incluyas "Revista", "Códigos", "Norte", "Misionero", "Digital", "Plan", "Misión", "Calle", "Impactos", "Cuatro", "Voz", "Canal", "Primera", "Edición", "Online", "Territorio".
+    REGLAS DE FILTRADO EXTREMO:
+    1. PROHIBIDO NOMBRES DE MEDIOS Y MARCAS: No incluyas "Revista", "Códigos", "Norte", "Misionero", "Digital", "Plan", "Misión", "Calle", "Impactos", "Cuatro", "Voz", "Canal", "Primera", "Edición", "Online", "Territorio".
     2. PROHIBIDO PALABRAS PAÍS / NACIONES GENÉRICAS / DÍAS: No incluyas "Argentina", "Misiones", "Posadas", "Provincia", "Nacional", "Nuevo", "Grande", "Hoy", "Día", "Jueves", "Viernes".
     3. SELECCIONA ÚNICAMENTE CONCEPTOS O TÉRMINOS CON VALOR COYUNTURAL REAL: Nombres propios de figuras (ej: Passalacqua, Rovira, Milei), temas o problemáticas (ej: Yerba, Cataratas, Crecida, Dengue, EMSA, Colectivo, Inundación, Ruta 12, Tarifa, Gabinete).
     
@@ -224,7 +216,6 @@ def ejecutar_medicion_real(key):
             if p and len(p) > 2 and p.lower() not in prohibidas:
                 resultados.append((p.capitalize(), cant))
 
-    # Respaldo seguro si faltan palabras
     if len(resultados) < 5:
         palabras_sueltas = re.findall(r'\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{3,}\b', texto_titulares)
         conteo_py = {}
@@ -255,50 +246,77 @@ if api_key:
                 if isinstance(elem, dict):
                     medicion_anterior = elem.get("palabras", {})
 
+            # SUMA TOTAL DE MENCIONES DE LAS 5 PALABRAS (TOTALIDAD REPRECENTADA = 100%)
             sum_menciones = sum(cant for _, cant in datos_top) if datos_top else 1
             medicion_actual_dict = {}
-            
-            # FORMATO DE MOSAICO BALANCEADO 2 FILAS (2 Cajas arriba, 3 Cajas abajo)
-            flex_sizes = [
-                "flex: 1 1 55%;",  # Caja #1 (Fila 1, Izquierda - Grande)
-                "flex: 1 1 40%;",  # Caja #2 (Fila 1, Derecha - Mediana)
-                "flex: 1 1 30%;",  # Caja #3 (Fila 2, Izquierda)
-                "flex: 1 1 30%;",  # Caja #4 (Fila 2, Centro)
-                "flex: 1 1 30%;"   # Caja #5 (Fila 2, Derecha)
-            ]
 
-            html_mosaico = '<div class="mosaic-container">'
+            # DIVISION EN 2 FILAS CON PROPORCIÓN DE ANCHO MATEMÁTICAMENTE EXACTA
+            row1_items = datos_top[:2]
+            row1_sum = sum(cant for _, cant in row1_items) if row1_items else 1
 
-            for i, (palabra, cant_actual) in enumerate(datos_top):
+            row2_items = datos_top[2:5]
+            row2_sum = sum(cant for _, cant in row2_items) if row2_items else 1
+
+            html_mosaico = '<div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">'
+
+            # FILA 1 (TOP 2 ELEMENTOS)
+            html_mosaico += '<div style="display: flex; gap: 12px; width: 100%;">'
+            for i, (palabra, cant_actual) in enumerate(row1_items):
                 p_key = palabra.lower()
                 cant_previa = medicion_anterior.get(p_key, None)
-                
-                if cant_previa is None:
-                    diferencia = 1
-                else:
-                    diferencia = cant_actual - cant_previa
+                diferencia = 1 if cant_previa is None else (cant_actual - cant_previa)
 
-                pct_participacion = int((cant_actual / sum_menciones) * 100)
+                pct_participacion = int(round((cant_actual / sum_menciones) * 100))
+                # Ancho exacto relativo dentro de la Fila 1
+                w_pct = (cant_actual / row1_sum) * 100
 
-                # ASIGNACIÓN DE COLOR Y FLECHAS SEGÚN VARIACIÓN Y POSICIÓN
                 if diferencia > 0 or i < 2:
-                    clase_color = "card-yellow-dark"  # Dorado Intenso ▲ (Top / Creciente)
+                    clase_color = "card-yellow-dark"
                     icono = "▲"
                     var_texto = f"+{pct_participacion}%"
-                elif diferencia < 0 or i == 4:
-                    clase_color = "card-yellow-light" # Amarillo Claro ▼ (Decreciente)
+                elif diferencia < 0:
+                    clase_color = "card-yellow-light"
                     icono = "▼"
                     var_texto = f"-{pct_participacion}%"
                 else:
-                    clase_color = "card-yellow-mid"   # Amarillo Medio = (Estable)
+                    clase_color = "card-yellow-mid"
                     icono = "="
                     var_texto = f"{pct_participacion}%"
 
-                flex_style = flex_sizes[i] if i < len(flex_sizes) else "flex: 1 1 30%;"
                 medicion_actual_dict[p_key] = cant_actual
-
-                card_html = f'<div class="mosaic-card {clase_color}" style="{flex_style}"><div class="card-title">{palabra}</div><div class="card-meta"><span>{var_texto}</span><span>{icono}</span></div></div>'
+                card_html = f'<div class="mosaic-card {clase_color}" style="width: {w_pct:.2f}%; flex-grow: {cant_actual};"><div class="card-title">{palabra}</div><div class="card-meta"><span>{var_texto}</span><span>{icono}</span></div></div>'
                 html_mosaico += card_html
+            html_mosaico += '</div>'
+
+            # FILA 2 (TOP 3 A 5 ELEMENTOS)
+            html_mosaico += '<div style="display: flex; gap: 12px; width: 100%;">'
+            for i, (palabra, cant_actual) in enumerate(row2_items):
+                idx = i + 2
+                p_key = palabra.lower()
+                cant_previa = medicion_anterior.get(p_key, None)
+                diferencia = 1 if cant_previa is None else (cant_actual - cant_previa)
+
+                pct_participacion = int(round((cant_actual / sum_menciones) * 100))
+                # Ancho exacto relativo dentro de la Fila 2
+                w_pct = (cant_actual / row2_sum) * 100
+
+                if diferencia > 0:
+                    clase_color = "card-yellow-dark"
+                    icono = "▲"
+                    var_texto = f"+{pct_participacion}%"
+                elif diferencia < 0 or idx == 4:
+                    clase_color = "card-yellow-light"
+                    icono = "▼"
+                    var_texto = f"-{pct_participacion}%"
+                else:
+                    clase_color = "card-yellow-mid"
+                    icono = "="
+                    var_texto = f"{pct_participacion}%"
+
+                medicion_actual_dict[p_key] = cant_actual
+                card_html = f'<div class="mosaic-card {clase_color}" style="width: {w_pct:.2f}%; flex-grow: {cant_actual};"><div class="card-title">{palabra}</div><div class="card-meta"><span>{var_texto}</span><span>{icono}</span></div></div>'
+                html_mosaico += card_html
+            html_mosaico += '</div>'
 
             html_mosaico += '</div>'
 
@@ -313,9 +331,4 @@ if api_key:
                 historial_lista.append(nueva_entrada)
                 guardar_historial(historial_lista[-10:])
 
-            with st.expander("🔍 Auditoría de Veracidad: Ver titulares y horarios consultados", expanded=False):
-                st.caption(f"Medición realizada el **{datetime.now().strftime('%d/%m/%Y a las %H:%M hs')}** sobre **{total_muestras} titulares reales** de 15 medios periodísticos de Misiones.")
-                st.dataframe(registro_titulares, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"Actualizando tendencias... ({e})")
+            with st.expander("🔍 Auditoría de Veracidad: Ver titulares y horario
