@@ -4,7 +4,6 @@ import json
 import os
 import re
 from datetime import datetime
-import pandas as pd
 from google import genai
 
 # Configuración de página minimalista
@@ -115,7 +114,11 @@ def cargar_historial():
     if os.path.exists(ARCH_HISTORIAL):
         try:
             with open(ARCH_HISTORIAL, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+                elif isinstance(data, dict):
+                    return [{"timestamp": "anterior", "palabras": data}]
         except:
             return []
     return []
@@ -160,8 +163,20 @@ def ejecutar_medicion_real(key):
     2. NO incluyas palabras vacías ni conectores (de, la, el, en, misiones, posadas, hoy, noticias).
     3. Devuelve la lista en este formato EXACTO por línea: Palabra, Menciones
     """
-    resp = client.models.generate_content(model='gemini-3.5-flash', contents=prompt)
     
+    modelos = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash']
+    resp = None
+    for m in modelos:
+        try:
+            resp = client.models.generate_content(model=m, contents=prompt)
+            if resp and resp.text:
+                break
+        except:
+            continue
+            
+    if not resp or not resp.text:
+        return [], len(titulares_log), titulares_log
+
     resultados = []
     for linea in resp.text.strip().split("\n"):
         if "," in linea:
@@ -179,68 +194,72 @@ def ejecutar_medicion_real(key):
 if api_key:
     try:
         datos_top, total_muestras, registro_titulares = ejecutar_medicion_real(api_key)
-        historial_lista = cargar_historial()
         
-        medicion_anterior = {}
-        if historial_lista and len(historial_lista) > 0:
-            medicion_anterior = historial_lista[-1].get("palabras", {})
-
-        umbral_10 = max(1, int(total_muestras * 0.10))
-        sum_menciones = sum(cant for _, cant in datos_top) if datos_top else 1
-        
-        medicion_actual_dict = {}
-        html_mosaico = '<div class="mosaic-container">'
-
-        for i, (palabra, cant_actual) in enumerate(datos_top):
-            p_key = palabra.lower()
-            cant_previa = medicion_anterior.get(p_key, None)
+        if not datos_top:
+            st.info("Cargando y procesando titulares de Misiones...")
+        else:
+            historial_lista = cargar_historial()
             
-            if cant_previa is None:
-                diferencia = cant_actual
-            else:
-                diferencia = cant_actual - cant_previa
+            medicion_anterior = {}
+            if historial_lista and len(historial_lista) > 0:
+                elem = historial_lista[-1]
+                if isinstance(elem, dict):
+                    medicion_anterior = elem.get("palabras", {})
 
-            pct_participacion = int((cant_actual / sum_menciones) * 100)
+            umbral_10 = max(1, int(total_muestras * 0.10))
+            sum_menciones = sum(cant for _, cant in datos_top) if datos_top else 1
+            
+            medicion_actual_dict = {}
+            html_mosaico = '<div class="mosaic-container">'
 
-            # CÁLCULO PROPORCIONAL DINÁMICO DE TAMAÑO REAL
-            flex_basis = max(24, min(70, int(pct_participacion * 1.8)))
-            flex_style = f"flex: {cant_actual} 1 {flex_basis}%;"
+            for i, (palabra, cant_actual) in enumerate(datos_top):
+                p_key = palabra.lower()
+                cant_previa = medicion_anterior.get(p_key, None)
+                
+                if cant_previa is None:
+                    diferencia = cant_actual
+                else:
+                    diferencia = cant_actual - cant_previa
 
-            if diferencia >= umbral_10:
-                clase_color = "card-green"
-                icono = "▲"
-                var_texto = f"+{pct_participacion}%"
-            elif diferencia <= -umbral_10:
-                clase_color = "card-red"
-                icono = "▼"
-                var_texto = f"-{pct_participacion}%"
-            else:
-                clase_color = "card-yellow"
-                icono = "="
-                var_texto = f"{pct_participacion}%"
+                pct_participacion = int((cant_actual / sum_menciones) * 100)
 
-            medicion_actual_dict[p_key] = cant_actual
+                flex_basis = max(24, min(70, int(pct_participacion * 1.8)))
+                flex_style = f"flex: {cant_actual} 1 {flex_basis}%;"
 
-            card_html = f'<div class="mosaic-card {clase_color}" style="{flex_style}"><div class="card-title">{palabra}</div><div class="card-meta"><span>{var_texto}</span><span>{icono}</span></div></div>'
-            html_mosaico += card_html
+                if diferencia >= umbral_10:
+                    clase_color = "card-green"
+                    icono = "▲"
+                    var_texto = f"+{pct_participacion}%"
+                elif diferencia <= -umbral_10:
+                    clase_color = "card-red"
+                    icono = "▼"
+                    var_texto = f"-{pct_participacion}%"
+                else:
+                    clase_color = "card-yellow"
+                    icono = "="
+                    var_texto = f"{pct_participacion}%"
 
-        html_mosaico += '</div>'
+                medicion_actual_dict[p_key] = cant_actual
 
-        st.markdown(html_mosaico, unsafe_allow_html=True)
-        st.markdown('<div class="oblicua-footer">Impulsado por Oblicua Comunicación</div>', unsafe_allow_html=True)
+                card_html = f'<div class="mosaic-card {clase_color}" style="{flex_style}"><div class="card-title">{palabra}</div><div class="card-meta"><span>{var_texto}</span><span>{icono}</span></div></div>'
+                html_mosaico += card_html
 
-        if not medicion_anterior or medicion_actual_dict != medicion_anterior:
-            nueva_entrada = {
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "palabras": medicion_actual_dict
-            }
-            historial_lista.append(nueva_entrada)
-            guardar_historial(historial_lista[-10:])
+            html_mosaico += '</div>'
 
-        with st.expander("🔍 Auditoría de Veracidad: Ver titulares y horarios consultados", expanded=False):
-            st.caption(f"Medición realizada el **{datetime.now().strftime('%d/%m/%Y a las %H:%M hs')}** sobre **{total_muestras} titulares reales** de 15 medios periodísticos de Misiones.")
-            df_audit = pd.DataFrame(registro_titulares)
-            st.dataframe(df_audit, use_container_width=True, hide_index=True)
+            st.markdown(html_mosaico, unsafe_allow_html=True)
+            st.markdown('<div class="oblicua-footer">Impulsado por Oblicua Comunicación</div>', unsafe_allow_html=True)
+
+            if not medicion_anterior or medicion_actual_dict != medicion_anterior:
+                nueva_entrada = {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "palabras": medicion_actual_dict
+                }
+                historial_lista.append(nueva_entrada)
+                guardar_historial(historial_lista[-10:])
+
+            with st.expander("🔍 Auditoría de Veracidad: Ver titulares y horarios consultados", expanded=False):
+                st.caption(f"Medición realizada el **{datetime.now().strftime('%d/%m/%Y a las %H:%M hs')}** sobre **{total_muestras} titulares reales** de 15 medios periodísticos de Misiones.")
+                st.dataframe(registro_titulares, use_container_width=True)
 
     except Exception as e:
-        st.error("Actualizando tendencias...")
+        st.error(f"Actualizando tendencias... ({e})")
