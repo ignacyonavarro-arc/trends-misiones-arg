@@ -47,7 +47,7 @@ st.markdown("""
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        min-height: 135px;
+        min-height: 130px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.03);
     }
     
@@ -137,7 +137,6 @@ def guardar_historial(datos):
     except:
         pass
 
-# Actualización automática de caché cada 20 minutos
 @st.cache_data(ttl=1200)
 def obtener_tendencias(key):
     titulares = []
@@ -157,7 +156,7 @@ def obtener_tendencias(key):
     Analiza los siguientes {len(titulares)} titulares de noticias actuales de Misiones:
     {'\n'.join(titulares)}
 
-    Extrae exactamente las 5 PALABRAS O CONCEPTOS TEMÁTICOS MÁS MENCIONADOS Y RECURRENTES y estima su cantidad de menciones.
+    Extrae exactamente las 5 PALABRAS O CONCEPTOS TEMÁTICOS MÁS MENCIONADOS Y SIGNIFICATIVOS en este momento y estima su cantidad de menciones.
     REGLAS:
     1. Palabras clave informativas de actualidad (ej: Yerba, Passalacqua, Dengue, Colectivo, Cataratas, EMSA, Inflación, Frontera).
     2. NO incluyas palabras vacías ni conectores (de, la, el, en, misiones, posadas, hoy, noticias).
@@ -188,7 +187,6 @@ if api_key:
         sum_menciones = sum(cant for _, cant in datos_top) if datos_top else 1
         nuevo_historial = {}
 
-        # Proporciones de tamaño estilo Mosaico (Finviz)
         flex_sizes = ["flex: 2 1 58%;", "flex: 1 1 38%;", "flex: 1 1 30%;", "flex: 1 1 30%;", "flex: 1 1 30%;"]
 
         html_mosaico = '<div class="mosaic-container">'
@@ -203,7 +201,6 @@ if api_key:
 
             pct_participacion = int((cant_actual / sum_menciones) * 100)
 
-            # Asignación de colores y flechas según variación >= 10%
             if diferencia >= umbral_10:
                 clase_color = "card-green"
                 icono = "▲"
@@ -213,7 +210,7 @@ if api_key:
                 icono = "▼"
                 var_texto = f"-{pct_participacion}%"
             else:
-                clase_color = "card-yellow" # Amarillo suave
+                clase_color = "card-yellow"
                 icono = "="
                 var_texto = f"{pct_participacion}%"
 
@@ -221,15 +218,9 @@ if api_key:
 
             nuevo_historial[palabra.lower()] = cant_actual
 
-            html_mosaico += f"""
-                <div class="mosaic-card {clase_color}" style="{flex_style}">
-                    <div class="card-title">{palabra}</div>
-                    <div class="card-meta">
-                        <span>{var_texto}</span>
-                        <span>{icono}</span>
-                    </div>
-                </div>
-            """
+            # HTML en una sola línea limpia sin sangría
+            card_html = f'<div class="mosaic-card {clase_color}" style="{flex_style}"><div class="card-title">{palabra}</div><div class="card-meta"><span>{var_texto}</span><span>{icono}</span></div></div>'
+            html_mosaico += card_html
 
         html_mosaico += '</div>'
         
