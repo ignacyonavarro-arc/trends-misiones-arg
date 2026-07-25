@@ -47,19 +47,19 @@ st.markdown("""
     
     /* ESCALA CROMÁTICA EN TONOS DE AMARILLO */
     .card-yellow-dark {
-        background-color: #EAB308; /* Dorado / Amarillo Intenso (▲ Creciente) */
+        background-color: #EAB308;
         color: #000000;
         border: 1px solid #CA8A04;
     }
     
     .card-yellow-mid {
-        background-color: #FEF08A; /* Amarillo Suave / Medio (= Estable) */
+        background-color: #FEF08A;
         color: #713F12;
         border: 1px solid #FDE047;
     }
     
     .card-yellow-light {
-        background-color: #FEF9C3; /* Amarillo Pálido / Claro (▼ Decreciente) */
+        background-color: #FEF9C3;
         color: #854D0E;
         border: 1px solid #FEF08A;
     }
@@ -246,11 +246,9 @@ if api_key:
                 if isinstance(elem, dict):
                     medicion_anterior = elem.get("palabras", {})
 
-            # SUMA TOTAL DE MENCIONES DE LAS 5 PALABRAS (TOTALIDAD REPRECENTADA = 100%)
             sum_menciones = sum(cant for _, cant in datos_top) if datos_top else 1
             medicion_actual_dict = {}
 
-            # DIVISION EN 2 FILAS CON PROPORCIÓN DE ANCHO MATEMÁTICAMENTE EXACTA
             row1_items = datos_top[:2]
             row1_sum = sum(cant for _, cant in row1_items) if row1_items else 1
 
@@ -259,7 +257,7 @@ if api_key:
 
             html_mosaico = '<div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">'
 
-            # FILA 1 (TOP 2 ELEMENTOS)
+            # FILA 1
             html_mosaico += '<div style="display: flex; gap: 12px; width: 100%;">'
             for i, (palabra, cant_actual) in enumerate(row1_items):
                 p_key = palabra.lower()
@@ -267,7 +265,6 @@ if api_key:
                 diferencia = 1 if cant_previa is None else (cant_actual - cant_previa)
 
                 pct_participacion = int(round((cant_actual / sum_menciones) * 100))
-                # Ancho exacto relativo dentro de la Fila 1
                 w_pct = (cant_actual / row1_sum) * 100
 
                 if diferencia > 0 or i < 2:
@@ -288,7 +285,7 @@ if api_key:
                 html_mosaico += card_html
             html_mosaico += '</div>'
 
-            # FILA 2 (TOP 3 A 5 ELEMENTOS)
+            # FILA 2
             html_mosaico += '<div style="display: flex; gap: 12px; width: 100%;">'
             for i, (palabra, cant_actual) in enumerate(row2_items):
                 idx = i + 2
@@ -297,7 +294,6 @@ if api_key:
                 diferencia = 1 if cant_previa is None else (cant_actual - cant_previa)
 
                 pct_participacion = int(round((cant_actual / sum_menciones) * 100))
-                # Ancho exacto relativo dentro de la Fila 2
                 w_pct = (cant_actual / row2_sum) * 100
 
                 if diferencia > 0:
@@ -331,4 +327,9 @@ if api_key:
                 historial_lista.append(nueva_entrada)
                 guardar_historial(historial_lista[-10:])
 
-            with st.expander("🔍 Auditoría de Veracidad: Ver titulares y horario
+            with st.expander("Auditoria de Veracidad - Titulares Consultados", expanded=False):
+                st.caption(f"Medicion realizada sobre {total_muestras} titulares reales de 15 medios de Misiones.")
+                st.dataframe(registro_titulares, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Actualizando tendencias... ({e})")
