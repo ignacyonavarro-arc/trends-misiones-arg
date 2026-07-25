@@ -3,12 +3,14 @@ import feedparser
 import json
 import os
 import re
+from datetime import datetime
+import pandas as pd
 from google import genai
 
 # Configuración de página minimalista
 st.set_page_config(page_title="trends misiones", page_icon="📈", layout="centered")
 
-# Estilo visual Plus Jakarta Sans + Mosaico Heatmap
+# Estilo visual Plus Jakarta Sans + Mosaico Dinámico
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
@@ -51,21 +53,9 @@ st.markdown("""
         box-shadow: 0 2px 6px rgba(0,0,0,0.03);
     }
     
-    .card-green {
-        background-color: #16A34A;
-        color: #FFFFFF;
-    }
-    
-    .card-red {
-        background-color: #DC2626;
-        color: #FFFFFF;
-    }
-    
-    .card-yellow {
-        background-color: #FEF08A;
-        color: #713F12;
-        border: 1px solid #FDE047;
-    }
+    .card-green { background-color: #16A34A; color: #FFFFFF; }
+    .card-red { background-color: #DC2626; color: #FFFFFF; }
+    .card-yellow { background-color: #FEF08A; color: #713F12; border: 1px solid #FDE047; }
     
     .card-title {
         font-size: 22px;
@@ -87,7 +77,7 @@ st.markdown("""
     .oblicua-footer {
         text-align: center;
         margin-top: 35px;
-        margin-bottom: 15px;
+        margin-bottom: 10px;
         font-size: 12px;
         color: #71717A;
         font-weight: 500;
@@ -100,7 +90,7 @@ st.markdown('<div class="trends-header">trends misiones</div>', unsafe_allow_htm
 
 api_key = st.secrets.get("GEMINI_API_KEY") if "GEMINI_API_KEY" in st.secrets else st.sidebar.text_input("🔑 Gemini API Key", type="password")
 
-# LISTA COMPLETA DE 15 MEDIOS PERIODÍSTICOS DE MISIONES
+# 15 MEDIOS PERIODÍSTICOS OFICIALES DE MISIONES
 FUENTES = [
     {"nombre": "Misiones Online", "url": "https://misionesonline.net/feed/"},
     {"nombre": "Primera Edición", "url": "https://www.primeraedicion.com.ar/feed/"},
@@ -127,34 +117,42 @@ def cargar_historial():
             with open(ARCH_HISTORIAL, "r") as f:
                 return json.load(f)
         except:
-            return {}
-    return {}
+            return []
+    return []
 
-def guardar_historial(datos):
+def guardar_historial(historial_lista):
     try:
         with open(ARCH_HISTORIAL, "w") as f:
-            json.dump(datos, f)
+            json.dump(historial_lista, f)
     except:
         pass
 
 @st.cache_data(ttl=1200)
-def obtener_tendencias(key):
-    titulares = []
+def ejecutar_medicion_real(key):
+    titulares_log = []
+    hora_chequeo = datetime.now().strftime("%d/%m/%Y %H:%M hs")
+    
     for f in FUENTES:
         try:
             feed = feedparser.parse(f["url"])
             for entry in feed.entries[:6]:
-                titulares.append(entry.title)
+                titulares_log.append({
+                    "Fecha/Hora": hora_chequeo,
+                    "Medio": f["nombre"],
+                    "Titular Real": entry.title
+                })
         except:
             pass
             
-    if not titulares:
-        return [], 0
+    if not titulares_log:
+        return [], 0, []
         
+    texto_titulares = "\n".join([item["Titular Real"] for item in titulares_log])
+    
     client = genai.Client(api_key=key)
     prompt = f"""
-    Analiza los siguientes {len(titulares)} titulares de noticias actuales de Misiones:
-    {'\n'.join(titulares)}
+    Analiza los siguientes {len(titulares_log)} titulares de noticias de Misiones:
+    {texto_titulares}
 
     Extrae exactamente las 5 PALABRAS O CONCEPTOS TEMÁTICOS MÁS MENCIONADOS Y SIGNIFICATIVOS en este momento y estima su cantidad de menciones.
     REGLAS:
@@ -176,23 +174,26 @@ def obtener_tendencias(key):
             if p:
                 resultados.append((p, cant))
                 
-    return resultados[:5], len(titulares)
+    return resultados[:5], len(titulares_log), titulares_log
 
 if api_key:
     try:
-        datos_top, total_muestras = obtener_tendencias(api_key)
-        historial = cargar_historial()
+        datos_top, total_muestras, registro_titulares = ejecutar_medicion_real(api_key)
+        historial_lista = cargar_historial()
         
+        medicion_anterior = {}
+        if historial_lista and len(historial_lista) > 0:
+            medicion_anterior = historial_lista[-1].get("palabras", {})
+
         umbral_10 = max(1, int(total_muestras * 0.10))
         sum_menciones = sum(cant for _, cant in datos_top) if datos_top else 1
-        nuevo_historial = {}
-
-        flex_sizes = ["flex: 2 1 58%;", "flex: 1 1 38%;", "flex: 1 1 30%;", "flex: 1 1 30%;", "flex: 1 1 30%;"]
-
+        
+        medicion_actual_dict = {}
         html_mosaico = '<div class="mosaic-container">'
 
         for i, (palabra, cant_actual) in enumerate(datos_top):
-            cant_previa = historial.get(palabra.lower(), None)
+            p_key = palabra.lower()
+            cant_previa = medicion_anterior.get(p_key, None)
             
             if cant_previa is None:
                 diferencia = cant_actual
@@ -200,6 +201,10 @@ if api_key:
                 diferencia = cant_actual - cant_previa
 
             pct_participacion = int((cant_actual / sum_menciones) * 100)
+
+            # CÁLCULO PROPORCIONAL DINÁMICO DE TAMAÑO REAL
+            flex_basis = max(24, min(70, int(pct_participacion * 1.8)))
+            flex_style = f"flex: {cant_actual} 1 {flex_basis}%;"
 
             if diferencia >= umbral_10:
                 clase_color = "card-green"
@@ -214,23 +219,28 @@ if api_key:
                 icono = "="
                 var_texto = f"{pct_participacion}%"
 
-            flex_style = flex_sizes[i] if i < len(flex_sizes) else "flex: 1 1 30%;"
+            medicion_actual_dict[p_key] = cant_actual
 
-            nuevo_historial[palabra.lower()] = cant_actual
-
-            # HTML en una sola línea limpia sin sangría
             card_html = f'<div class="mosaic-card {clase_color}" style="{flex_style}"><div class="card-title">{palabra}</div><div class="card-meta"><span>{var_texto}</span><span>{icono}</span></div></div>'
             html_mosaico += card_html
 
         html_mosaico += '</div>'
-        
-        # Renderizar Mosaico
+
         st.markdown(html_mosaico, unsafe_allow_html=True)
-        
-        # Pie de página OBLICUA
         st.markdown('<div class="oblicua-footer">Impulsado por Oblicua Comunicación</div>', unsafe_allow_html=True)
 
-        guardar_historial(nuevo_historial)
+        if not medicion_anterior or medicion_actual_dict != medicion_anterior:
+            nueva_entrada = {
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "palabras": medicion_actual_dict
+            }
+            historial_lista.append(nueva_entrada)
+            guardar_historial(historial_lista[-10:])
+
+        with st.expander("🔍 Auditoría de Veracidad: Ver titulares y horarios consultados", expanded=False):
+            st.caption(f"Medición realizada el **{datetime.now().strftime('%d/%m/%Y a las %H:%M hs')}** sobre **{total_muestras} titulares reales** de 15 medios periodísticos de Misiones.")
+            df_audit = pd.DataFrame(registro_titulares)
+            st.dataframe(df_audit, use_container_width=True, hide_index=True)
 
     except Exception as e:
-        st.error("Actualizando mosaico de tendencias...")
+        st.error("Actualizando tendencias...")
