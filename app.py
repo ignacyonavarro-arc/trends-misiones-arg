@@ -257,7 +257,7 @@ if api_key:
 
             html_mosaico = '<div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">'
 
-            # FILA 1
+            # FILA 1 (Top 2 Elementos)
             html_mosaico += '<div style="display: flex; gap: 12px; width: 100%;">'
             for i, (palabra, cant_actual) in enumerate(row1_items):
                 p_key = palabra.lower()
@@ -266,26 +266,24 @@ if api_key:
 
                 pct_participacion = int(round((cant_actual / sum_menciones) * 100))
                 w_pct = (cant_actual / row1_sum) * 100
+                var_texto = f"{pct_participacion}%" # PORCENTAJE LIMPIO SIN SIGNOS + O -
 
                 if diferencia > 0 or i < 2:
                     clase_color = "card-yellow-dark"
                     icono = "▲"
-                    var_texto = f"+{pct_participacion}%"
                 elif diferencia < 0:
                     clase_color = "card-yellow-light"
                     icono = "▼"
-                    var_texto = f"-{pct_participacion}%"
                 else:
                     clase_color = "card-yellow-mid"
                     icono = "="
-                    var_texto = f"{pct_participacion}%"
 
                 medicion_actual_dict[p_key] = cant_actual
                 card_html = f'<div class="mosaic-card {clase_color}" style="width: {w_pct:.2f}%; flex-grow: {cant_actual};"><div class="card-title">{palabra}</div><div class="card-meta"><span>{var_texto}</span><span>{icono}</span></div></div>'
                 html_mosaico += card_html
             html_mosaico += '</div>'
 
-            # FILA 2
+            # FILA 2 (Top 3 a 5 Elementos)
             html_mosaico += '<div style="display: flex; gap: 12px; width: 100%;">'
             for i, (palabra, cant_actual) in enumerate(row2_items):
                 idx = i + 2
@@ -295,19 +293,17 @@ if api_key:
 
                 pct_participacion = int(round((cant_actual / sum_menciones) * 100))
                 w_pct = (cant_actual / row2_sum) * 100
+                var_texto = f"{pct_participacion}%" # PORCENTAJE LIMPIO SIN SIGNOS + O -
 
                 if diferencia > 0:
                     clase_color = "card-yellow-dark"
                     icono = "▲"
-                    var_texto = f"+{pct_participacion}%"
                 elif diferencia < 0 or idx == 4:
                     clase_color = "card-yellow-light"
                     icono = "▼"
-                    var_texto = f"-{pct_participacion}%"
                 else:
                     clase_color = "card-yellow-mid"
                     icono = "="
-                    var_texto = f"{pct_participacion}%"
 
                 medicion_actual_dict[p_key] = cant_actual
                 card_html = f'<div class="mosaic-card {clase_color}" style="width: {w_pct:.2f}%; flex-grow: {cant_actual};"><div class="card-title">{palabra}</div><div class="card-meta"><span>{var_texto}</span><span>{icono}</span></div></div>'
