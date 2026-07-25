@@ -139,11 +139,12 @@ def ejecutar_medicion_real(key):
         try:
             feed = feedparser.parse(f["url"])
             for entry in feed.entries[:6]:
-                titulares_log.append({
-                    "Fecha/Hora": hora_chequeo,
-                    "Medio": f["nombre"],
-                    "Titular Real": entry.title
-                })
+                if hasattr(entry, 'title') and entry.title:
+                    titulares_log.append({
+                        "Fecha/Hora": hora_chequeo,
+                        "Medio": f["nombre"],
+                        "Titular Real": entry.title
+                    })
         except:
             pass
             
@@ -157,38 +158,56 @@ def ejecutar_medicion_real(key):
     Analiza los siguientes {len(titulares_log)} titulares de noticias de Misiones:
     {texto_titulares}
 
-    Extrae exactamente las 5 PALABRAS O CONCEPTOS TEMÁTICOS MÁS MENCIONADOS Y SIGNIFICATIVOS en este momento y estima su cantidad de menciones.
+    Extrae exactamente las 5 PALABRAS O CONCEPTOS TEMÁTICOS MÁS MENCIONADOS Y RECURRENTES en este momento y estima su cantidad de menciones.
     REGLAS:
-    1. Palabras clave informativas de actualidad (ej: Yerba, Passalacqua, Dengue, Colectivo, Cataratas, EMSA, Inflación, Frontera).
-    2. NO incluyas palabras vacías ni conectores (de, la, el, en, misiones, posadas, hoy, noticias).
-    3. Devuelve la lista en este formato EXACTO por línea: Palabra, Menciones
+    1. Palabras clave informativas (ej: Yerba, Passalacqua, Dengue, Colectivo, Cataratas, EMSA, Inflación, Frontera).
+    2. NO incluyas palabras vacías ni conectores.
+    3. Devuelve CADA RESULTADO EN UNA LÍNEA CON ESTE FORMATO EXACTO: Palabra, Menciones
     """
     
     modelos = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash']
-    resp = None
+    raw_text = ""
     for m in modelos:
         try:
             resp = client.models.generate_content(model=m, contents=prompt)
             if resp and resp.text:
+                raw_text = resp.text
                 break
         except:
             continue
-            
-    if not resp or not resp.text:
-        return [], len(titulares_log), titulares_log
 
     resultados = []
-    for linea in resp.text.strip().split("\n"):
-        if "," in linea:
-            partes = linea.split(",")
-            p = partes[0].strip()
-            try:
-                cant = int(re.sub(r'\D', '', partes[1]))
-            except:
-                cant = 1
-            if p:
-                resultados.append((p, cant))
+    if raw_text:
+        for line in raw_text.strip().split("\n"):
+            # Limpiar viñetas, guiones, números iniciales o asteriscos
+            cleaned = re.sub(r'^[\*\-\d\.\s]+', '', line).replace('*', '').strip()
+            
+            p = ""
+            cant = 1
+            if ',' in cleaned:
+                partes = cleaned.split(',')
+                p = partes[0].strip()
+                m_num = re.search(r'\d+', partes[1])
+                cant = int(m_num.group()) if m_num else 1
+            elif ':' in cleaned:
+                partes = cleaned.split(':')
+                p = partes[0].strip()
+                m_num = re.search(r'\d+', partes[1])
+                cant = int(m_num.group()) if m_num else 1
                 
+            if p and len(p) > 1:
+                resultados.append((p.capitalize(), cant))
+
+    # Respaldo automático en Python si la respuesta de IA viniera vacía
+    if not resultados:
+        palabras_sueltas = re.findall(r'\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{3,}\b', texto_titulares)
+        excluir = {'Misiones', 'Posadas', 'Para', 'Como', 'Sobre', 'Tras', 'Este', 'Esta', 'Diario', 'Noticias'}
+        conteo_py = {}
+        for w in palabras_sueltas:
+            if w not in excluir:
+                conteo_py[w] = conteo_py.get(w, 0) + 1
+        resultados = sorted(conteo_py.items(), key=lambda x: x[1], reverse=True)[:5]
+
     return resultados[:5], len(titulares_log), titulares_log
 
 if api_key:
@@ -196,7 +215,7 @@ if api_key:
         datos_top, total_muestras, registro_titulares = ejecutar_medicion_real(api_key)
         
         if not datos_top:
-            st.info("Cargando y procesando titulares de Misiones...")
+            st.error("No se pudieron cargar titulares en este momento.")
         else:
             historial_lista = cargar_historial()
             
@@ -223,6 +242,7 @@ if api_key:
 
                 pct_participacion = int((cant_actual / sum_menciones) * 100)
 
+                # Cálculo del tamaño dinámico proporcional real
                 flex_basis = max(24, min(70, int(pct_participacion * 1.8)))
                 flex_style = f"flex: {cant_actual} 1 {flex_basis}%;"
 
