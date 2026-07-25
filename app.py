@@ -4,12 +4,13 @@ import json
 import os
 import re
 from datetime import datetime
+import pandas as pd
 from google import genai
 
 # Configuración de página minimalista
 st.set_page_config(page_title="trends misiones", page_icon="📈", layout="centered")
 
-# Estilo visual Plus Jakarta Sans + Mosaico Dinámico
+# Estilo visual Plus Jakarta Sans + Mosaico Tonalidades de Amarillo
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
@@ -52,9 +53,24 @@ st.markdown("""
         box-shadow: 0 2px 6px rgba(0,0,0,0.03);
     }
     
-    .card-green { background-color: #16A34A; color: #FFFFFF; }
-    .card-red { background-color: #DC2626; color: #FFFFFF; }
-    .card-yellow { background-color: #FEF08A; color: #713F12; border: 1px solid #FDE047; }
+    /* TONOS DE AMARILLO */
+    .card-yellow-dark {
+        background-color: #EAB308; /* Amarillo Oscuro / Dorado (Tendencia Positiva ▲) */
+        color: #000000;
+        border: 1px solid #CA8A04;
+    }
+    
+    .card-yellow-mid {
+        background-color: #FEF08A; /* Amarillo Medio / Suave (Tendencia Estable =) */
+        color: #713F12;
+        border: 1px solid #FDE047;
+    }
+    
+    .card-yellow-light {
+        background-color: #FEF9C3; /* Amarillo Muy Claro (Tendencia Negativa ▼) */
+        color: #854D0E;
+        border: 1px solid #FEF08A;
+    }
     
     .card-title {
         font-size: 22px;
@@ -138,7 +154,7 @@ def ejecutar_medicion_real(key):
     for f in FUENTES:
         try:
             feed = feedparser.parse(f["url"])
-            for entry in feed.entries[:6]:
+            for entry in feed.entries[:10]: # 10 titulares de la portada por medio (~150 noticias totales)
                 if hasattr(entry, 'title') and entry.title:
                     titulares_log.append({
                         "Fecha/Hora": hora_chequeo,
@@ -155,14 +171,17 @@ def ejecutar_medicion_real(key):
     
     client = genai.Client(api_key=key)
     prompt = f"""
-    Analiza los siguientes {len(titulares_log)} titulares de noticias de Misiones:
+    Analiza los siguientes {len(titulares_log)} titulares de la portada actual de los medios de comunicación de Misiones:
     {texto_titulares}
 
-    Extrae exactamente las 5 PALABRAS O CONCEPTOS TEMÁTICOS MÁS MENCIONADOS Y RECURRENTES en este momento y estima su cantidad de menciones.
-    REGLAS:
-    1. Palabras clave informativas (ej: Yerba, Passalacqua, Dengue, Colectivo, Cataratas, EMSA, Inflación, Frontera).
-    2. NO incluyas palabras vacías ni conectores.
-    3. Devuelve CADA RESULTADO EN UNA LÍNEA CON ESTE FORMATO EXACTO: Palabra, Menciones
+    Extrae exactamente las 5 PALABRAS O CONCEPTOS TEMÁTICOS MÁS MENCIONADOS Y RECURRENTES en la coyuntura informativa actual de la provincia.
+    
+    REGLAS DE EXCLUSIÓN ESTRICTA (SÚPER IMPORTANTE):
+    1. EXCLUYE PALABRAS QUE FORMEN PARTE DE LOS NOMBRES DE LOS PROPIOS DIARIOS: No incluyas "Norte", "Misionero", "Digital", "Plan", "Misión", "Calle", "Impactos", "Códigos", "Cuatro", "Voz", "Canal", "Primera", "Edición", "Online", "Territorio".
+    2. EXCLUYE PALABRAS VACÍAS O ADJETIVOS GENÉRICOS: No incluyas "Misiones", "Posadas", "Provincia", "Nacional", "Nuevo", "Grande", "Hoy", "Día", "Para", "Como", "Sobre", "Tras".
+    3. SELECCIONA ÚNICAMENTE CONCEPTOS O TÉRMINOS CON VALOR COYUNTURAL REAL: Nombres propios de figuras (ej: Passalacqua, Rovira, Milei), temas o problemáticas (ej: Yerba, Cataratas, Crecida, Dengue, EMSA, Colectivo, Inundación, Ruta 12, Tarifa).
+    
+    Devuelve CADA RESULTADO EN UNA LÍNEA CON ESTE FORMATO EXACTO: Palabra, Menciones
     """
     
     modelos = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash']
@@ -177,11 +196,11 @@ def ejecutar_medicion_real(key):
             continue
 
     resultados = []
+    prohibidas = {'misionero', 'norte', 'digital', 'plan', 'mision', 'calle', 'impactos', 'codigos', 'cuatro', 'voz', 'canal', 'primera', 'edicion', 'online', 'territorio', 'misiones', 'posadas', 'provincia', 'nuevo', 'grande', 'diario', 'noticias'}
+    
     if raw_text:
         for line in raw_text.strip().split("\n"):
-            # Limpiar viñetas, guiones, números iniciales o asteriscos
             cleaned = re.sub(r'^[\*\-\d\.\s]+', '', line).replace('*', '').strip()
-            
             p = ""
             cant = 1
             if ',' in cleaned:
@@ -195,18 +214,22 @@ def ejecutar_medicion_real(key):
                 m_num = re.search(r'\d+', partes[1])
                 cant = int(m_num.group()) if m_num else 1
                 
-            if p and len(p) > 1:
+            if p and len(p) > 2 and p.lower() not in prohibidas:
                 resultados.append((p.capitalize(), cant))
 
-    # Respaldo automático en Python si la respuesta de IA viniera vacía
-    if not resultados:
+    # Respaldo seguro en Python si la lista filtrada queda corta
+    if len(resultados) < 5:
         palabras_sueltas = re.findall(r'\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{3,}\b', texto_titulares)
-        excluir = {'Misiones', 'Posadas', 'Para', 'Como', 'Sobre', 'Tras', 'Este', 'Esta', 'Diario', 'Noticias'}
         conteo_py = {}
         for w in palabras_sueltas:
-            if w not in excluir:
+            if w.lower() not in prohibidas:
                 conteo_py[w] = conteo_py.get(w, 0) + 1
-        resultados = sorted(conteo_py.items(), key=lambda x: x[1], reverse=True)[:5]
+        top_py = sorted(conteo_py.items(), key=lambda x: x[1], reverse=True)
+        for p, c in top_py:
+            if p.capitalize() not in [item[0] for item in resultados]:
+                resultados.append((p.capitalize(), c))
+                if len(resultados) >= 5:
+                    break
 
     return resultados[:5], len(titulares_log), titulares_log
 
@@ -225,9 +248,7 @@ if api_key:
                 if isinstance(elem, dict):
                     medicion_anterior = elem.get("palabras", {})
 
-            umbral_10 = max(1, int(total_muestras * 0.10))
             sum_menciones = sum(cant for _, cant in datos_top) if datos_top else 1
-            
             medicion_actual_dict = {}
             html_mosaico = '<div class="mosaic-container">'
 
@@ -236,26 +257,27 @@ if api_key:
                 cant_previa = medicion_anterior.get(p_key, None)
                 
                 if cant_previa is None:
-                    diferencia = cant_actual
+                    diferencia = 1 # Palabra nueva que ingresa al Top 5 -> Creciente
                 else:
                     diferencia = cant_actual - cant_previa
 
                 pct_participacion = int((cant_actual / sum_menciones) * 100)
 
-                # Cálculo del tamaño dinámico proporcional real
+                # Cálculo de flex-basis dinámico
                 flex_basis = max(24, min(70, int(pct_participacion * 1.8)))
                 flex_style = f"flex: {cant_actual} 1 {flex_basis}%;"
 
-                if diferencia >= umbral_10:
-                    clase_color = "card-green"
+                # ESCALA EN TONOS DE AMARILLO
+                if diferencia >= 1:
+                    clase_color = "card-yellow-dark"  # Amarillo Oscuro / Dorado (Creciente ▲)
                     icono = "▲"
                     var_texto = f"+{pct_participacion}%"
-                elif diferencia <= -umbral_10:
-                    clase_color = "card-red"
+                elif diferencia <= -1:
+                    clase_color = "card-yellow-light" # Amarillo Claro (Decreciente ▼)
                     icono = "▼"
                     var_texto = f"-{pct_participacion}%"
                 else:
-                    clase_color = "card-yellow"
+                    clase_color = "card-yellow-mid"   # Amarillo Medio (Estable =)
                     icono = "="
                     var_texto = f"{pct_participacion}%"
 
@@ -278,7 +300,7 @@ if api_key:
                 guardar_historial(historial_lista[-10:])
 
             with st.expander("🔍 Auditoría de Veracidad: Ver titulares y horarios consultados", expanded=False):
-                st.caption(f"Medición realizada el **{datetime.now().strftime('%d/%m/%Y a las %H:%M hs')}** sobre **{total_muestras} titulares reales** de 15 medios periodísticos de Misiones.")
+                st.caption(f"Medición realizada el **{datetime.now().strftime('%d/%m/%Y a las %H:%M hs')}** sobre **{total_muestras} titulares de portada** de 15 medios periodísticos de Misiones.")
                 st.dataframe(registro_titulares, use_container_width=True)
 
     except Exception as e:
